@@ -1,6 +1,6 @@
 {
   "name": "@n8n-connect/react",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "React hooks and components for n8n workflow integration",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -18,9 +18,7 @@
       }
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -32,7 +30,7 @@
     "clean": "rm -rf dist"
   },
   "peerDependencies": {
-    "@n8n-connect/core": "workspace:*",
+    "@n8n-connect/core": "^0.1.0",
     "react": ">=18.0.0"
   },
   "devDependencies": {
@@ -45,14 +43,20 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
-  "keywords": [
-    "n8n",
-    "workflow",
-    "automation",
-    "sdk",
-    "react",
-    "hooks"
-  ],
+  "keywords": ["n8n", "workflow", "automation", "sdk", "react", "hooks"],
+  "author": "Sascha Seniuk",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saschaseniuk/n8n-connect.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://github.com/saschaseniuk/n8n-connect#readme",
+  "bugs": {
+    "url": "https://github.com/saschaseniuk/n8n-connect/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false
 }

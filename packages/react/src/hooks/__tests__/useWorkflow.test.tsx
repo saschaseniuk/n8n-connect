@@ -471,7 +471,7 @@ describe('useWorkflow', () => {
 
   describe('Persistence', () => {
     describe('Session Storage', () => {
-      it('should clear state on success', async () => {
+      it('should persist state on success', async () => {
         mockFetch.mockImplementationOnce(() => createSuccessResponse({ data: 'test' }));
 
         const { result } = renderHook(
@@ -483,8 +483,12 @@ describe('useWorkflow', () => {
           await result.current.execute();
         });
 
-        // State is cleared on success
-        expect(sessionStorage.getItem('n8n-connect:/test-session')).toBeNull();
+        // State is persisted on success
+        const stored = sessionStorage.getItem('n8n-connect:/test-session');
+        expect(stored).not.toBeNull();
+        const parsed = JSON.parse(stored!);
+        expect(parsed.status).toBe('success');
+        expect(parsed.data).toEqual({ data: 'test' });
       });
 
       it('should restore state from sessionStorage', async () => {
@@ -512,7 +516,7 @@ describe('useWorkflow', () => {
     });
 
     describe('Local Storage', () => {
-      it('should clear state on success', async () => {
+      it('should persist state on success', async () => {
         mockFetch.mockImplementationOnce(() => createSuccessResponse({ data: 'test' }));
 
         const { result } = renderHook(
@@ -524,8 +528,12 @@ describe('useWorkflow', () => {
           await result.current.execute();
         });
 
-        // State is cleared on success
-        expect(localStorage.getItem('n8n-connect:/test-local')).toBeNull();
+        // State is persisted on success
+        const stored = localStorage.getItem('n8n-connect:/test-local');
+        expect(stored).not.toBeNull();
+        const parsed = JSON.parse(stored!);
+        expect(parsed.status).toBe('success');
+        expect(parsed.data).toEqual({ data: 'test' });
       });
     });
 
