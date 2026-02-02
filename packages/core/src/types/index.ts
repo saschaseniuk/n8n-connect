@@ -32,8 +32,16 @@ export type {
   UseWorkflowReturn,
   WorkflowResult,
   BinaryResponse,
-  PollingStatusResponse,
 } from './workflow';
+
+// Executions API types
+export type {
+  N8nExecutionStatus,
+  N8nExecution,
+  ExecutionResult,
+  ExecutionPollingOptions,
+  ExecuteAndPollOptions,
+} from '../executions';
 
 // Error types
 export type { N8nErrorCode, N8nErrorDetails } from './errors';

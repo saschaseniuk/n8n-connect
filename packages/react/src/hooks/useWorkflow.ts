@@ -6,8 +6,6 @@ import {
   type UseWorkflowReturn,
   type WorkflowStatus,
   type N8nError,
-  executeWithPolling,
-  resumePolling,
   wrapError,
 } from '@n8n-connect/core';
 import { useN8nContext } from './useN8nContext';
@@ -17,8 +15,10 @@ import { usePersistence } from './usePersistence';
  * Hook for executing n8n workflows with full state management.
  *
  * This hook provides a complete solution for triggering workflows,
- * tracking their status, handling errors, and managing long-running
- * operations with polling.
+ * tracking their status, handling errors, and managing results.
+ *
+ * Note: For long-running workflows with polling, use the core package's
+ * `executeAndPoll` function with `ExecutionsClient` directly.
  *
  * @typeParam TInput - The input data type for the workflow
  * @typeParam TOutput - The expected output data type from the workflow
@@ -57,28 +57,6 @@ import { usePersistence } from './usePersistence';
  *   );
  * }
  * ```
- *
- * @example
- * ```tsx
- * // With polling for long-running workflows
- * const { execute, progress, isLoading } = useWorkflow('/process-video', {
- *   polling: {
- *     enabled: true,
- *     interval: 2000,
- *     timeout: 120000,
- *   },
- *   onSuccess: (result) => toast.success('Processing complete!'),
- *   onError: (error) => toast.error(error.message),
- * });
- * ```
- *
- * @example
- * ```tsx
- * // With persistence to resume after page reload
- * const { execute, status, data } = useWorkflow('/long-task', {
- *   persist: 'session',
- * });
- * ```
  */
 export function useWorkflow<TInput = unknown, TOutput = unknown>(
   webhookPath: string,
@@ -88,7 +66,6 @@ export function useWorkflow<TInput = unknown, TOutput = unknown>(
 
   // Merge options with provider defaults
   const mergedOptions = {
-    polling: { ...config.defaultPolling, ...options.polling },
     persist: options.persist ?? config.defaultPersist ?? false,
     manual: options.manual ?? true, // Default to manual mode
   };
@@ -136,42 +113,17 @@ export function useWorkflow<TInput = unknown, TOutput = unknown>(
       try {
         let result: TOutput;
 
-        // Callback to persist polling state for resume after page reload
-        const handlePollingStart = (executionId: string, statusEndpoint: string) => {
-          if (mergedOptions.persist) {
-            saveState({ status: 'running', executionId, statusEndpoint, data: null });
-          }
-          mergedOptions.polling.onPollingStart?.(executionId, statusEndpoint);
-        };
-
         if (config.useServerProxy && config.serverAction) {
           // Server proxy mode
           result = await config.serverAction<TInput, TOutput>(webhookPath, {
             data: inputData,
             files,
-            polling: {
-              ...mergedOptions.polling,
-              onProgress: (p: number) => {
-                if (mountedRef.current) setProgress(Math.round(p * 100));
-                mergedOptions.polling.onProgress?.(p);
-              },
-              onPollingStart: handlePollingStart,
-            },
           });
         } else if (client) {
           // Direct mode
-          result = await executeWithPolling<TInput, TOutput>(client, webhookPath, {
+          result = await client.execute<TInput, TOutput>(webhookPath, {
             data: inputData,
             files,
-            polling: {
-              ...mergedOptions.polling,
-              onProgress: (p: number) => {
-                if (mountedRef.current) setProgress(Math.round(p * 100));
-                mergedOptions.polling.onProgress?.(p);
-              },
-              onPollingStart: handlePollingStart,
-            },
-            signal: abortControllerRef.current.signal,
           });
         } else {
           throw new Error(
@@ -185,7 +137,11 @@ export function useWorkflow<TInput = unknown, TOutput = unknown>(
           setProgress(100);
           updateStatus('success');
           options.onSuccess?.(result);
-          clearState();
+
+          // Persist success state
+          if (mergedOptions.persist) {
+            saveState({ status: 'success', data: result });
+          }
         }
 
         return result;
@@ -206,13 +162,11 @@ export function useWorkflow<TInput = unknown, TOutput = unknown>(
       config.useServerProxy,
       config.serverAction,
       webhookPath,
-      mergedOptions.polling,
       mergedOptions.persist,
       options.onSuccess,
       options.onError,
       updateStatus,
       saveState,
-      clearState,
     ]
   );
 
@@ -247,49 +201,8 @@ export function useWorkflow<TInput = unknown, TOutput = unknown>(
     const persisted = loadState();
     if (!persisted) return;
 
-    // Resume polling if was running and we have execution info
-    if (
-      persisted.status === 'running' &&
-      persisted.executionId &&
-      persisted.statusEndpoint &&
-      client
-    ) {
-      // Set up abort controller for resume
-      abortControllerRef.current = new AbortController();
-      setStatus('running');
-      setProgress(0);
-
-      resumePolling<TOutput>(client, {
-        executionId: persisted.executionId,
-        statusEndpoint: persisted.statusEndpoint,
-        polling: {
-          ...mergedOptions.polling,
-          onProgress: (p: number) => {
-            if (mountedRef.current) setProgress(Math.round(p * 100));
-            mergedOptions.polling.onProgress?.(p);
-          },
-        },
-        signal: abortControllerRef.current.signal,
-      })
-        .then((result) => {
-          if (mountedRef.current) {
-            setData(result);
-            setProgress(100);
-            updateStatus('success');
-            options.onSuccess?.(result);
-            clearState();
-          }
-        })
-        .catch((err) => {
-          if (mountedRef.current) {
-            const wrappedError = wrapError(err);
-            setError(wrappedError);
-            updateStatus('error');
-            options.onError?.(wrappedError);
-          }
-        });
-    } else if (persisted.data) {
-      // Restore completed data
+    // Restore completed data
+    if (persisted.data) {
       setData(persisted.data);
       setStatus('success');
     }

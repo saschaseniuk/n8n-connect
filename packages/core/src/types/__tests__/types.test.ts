@@ -11,10 +11,13 @@ import type {
   UseWorkflowReturn,
   WorkflowResult,
   BinaryResponse,
-  PollingStatusResponse,
   N8nErrorCode,
   N8nErrorDetails,
   N8nServerAction,
+  N8nExecutionStatus,
+  ExecutionResult,
+  ExecutionPollingOptions,
+  ExecuteAndPollOptions,
 } from '../index';
 import { N8nError, isN8nError } from '../index';
 
@@ -88,7 +91,7 @@ describe('N8nProviderConfig', () => {
       timeout: 30000,
       useServerProxy: true,
       serverAction: mockServerAction,
-      defaultPolling: { enabled: true, interval: 2000 },
+      defaultPolling: { interval: 2000, timeout: 60000 },
       defaultPersist: 'session',
     };
 
@@ -98,20 +101,15 @@ describe('N8nProviderConfig', () => {
 
 describe('PollingOptions', () => {
   it('should accept all polling options', () => {
-    const progressCallback = vi.fn();
-
     const options: PollingOptions = {
-      enabled: true,
       interval: 2000,
       timeout: 60000,
       maxAttempts: 30,
-      onProgress: progressCallback,
-      statusEndpoint: '/status',
       exponentialBackoff: true,
       maxInterval: 30000,
     };
 
-    expect(options.enabled).toBe(true);
+    expect(options.interval).toBe(2000);
     expect(options.exponentialBackoff).toBe(true);
   });
 
@@ -201,10 +199,10 @@ describe('ExecuteOptions', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       timeout: 30000,
-      polling: { enabled: true, interval: 2000 },
+      polling: { interval: 2000, timeout: 60000 },
     };
 
-    expect(options.polling?.enabled).toBe(true);
+    expect(options.polling?.interval).toBe(2000);
   });
 });
 
@@ -225,7 +223,7 @@ describe('UseWorkflowOptions', () => {
     const onStatusChange = vi.fn();
 
     const options: UseWorkflowOptions<{ input: string }, { output: string }> = {
-      polling: { enabled: true },
+      polling: { interval: 2000, timeout: 60000 },
       persist: 'session',
       onSuccess,
       onError,
@@ -301,26 +299,89 @@ describe('BinaryResponse', () => {
   });
 });
 
-describe('PollingStatusResponse', () => {
-  it('should have status field', () => {
-    const runningResponse: PollingStatusResponse = {
-      status: 'running',
-      progress: 50,
+describe('N8nExecutionStatus', () => {
+  it('should have all valid status values', () => {
+    const statuses: N8nExecutionStatus[] = [
+      'new',
+      'running',
+      'success',
+      'error',
+      'canceled',
+      'waiting',
+    ];
+
+    statuses.forEach((status) => {
+      expect([
+        'new',
+        'running',
+        'success',
+        'error',
+        'canceled',
+        'waiting',
+      ]).toContain(status);
+    });
+  });
+});
+
+describe('ExecutionResult', () => {
+  it('should have all required fields', () => {
+    const result: ExecutionResult<{ processed: boolean }> = {
+      executionId: 'exec-123',
+      status: 'success',
+      finished: true,
+      data: { processed: true },
+      startedAt: new Date('2024-01-15T10:00:00.000Z'),
+      stoppedAt: new Date('2024-01-15T10:00:05.000Z'),
+      duration: 5000,
+      workflowId: '1',
+      workflowName: 'Test Workflow',
     };
 
-    const completeResponse: PollingStatusResponse = {
-      status: 'complete',
-      result: { data: 'success' },
+    expect(result.executionId).toBe('exec-123');
+    expect(result.status).toBe('success');
+    expect(result.finished).toBe(true);
+    expect(result.data?.processed).toBe(true);
+    expect(result.duration).toBe(5000);
+  });
+});
+
+describe('ExecutionPollingOptions', () => {
+  it('should accept all polling options', () => {
+    const onProgress = vi.fn();
+    const controller = new AbortController();
+
+    const options: ExecutionPollingOptions = {
+      interval: 1000,
+      timeout: 300000,
+      maxAttempts: 100,
+      exponentialBackoff: true,
+      maxInterval: 10000,
+      onProgress,
+      signal: controller.signal,
     };
 
-    const errorResponse: PollingStatusResponse = {
-      status: 'error',
-      error: 'Something went wrong',
+    expect(options.interval).toBe(1000);
+    expect(options.exponentialBackoff).toBe(true);
+    expect(options.signal).toBe(controller.signal);
+  });
+});
+
+describe('ExecuteAndPollOptions', () => {
+  it('should accept data, files, and polling options', () => {
+    const mockFile = new File(['content'], 'test.txt');
+
+    const options: ExecuteAndPollOptions<{ task: string }> = {
+      data: { task: 'process' },
+      files: { document: mockFile },
+      polling: {
+        interval: 2000,
+        timeout: 60000,
+      },
     };
 
-    expect(runningResponse.status).toBe('running');
-    expect(completeResponse.status).toBe('complete');
-    expect(errorResponse.status).toBe('error');
+    expect(options.data?.task).toBe('process');
+    expect(options.files?.document).toBe(mockFile);
+    expect(options.polling?.interval).toBe(2000);
   });
 });
 

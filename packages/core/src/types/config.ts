@@ -67,13 +67,11 @@ export interface N8nProviderConfig {
 /**
  * Configuration options for polling long-running workflows.
  *
- * Polling is used when workflows take longer than typical HTTP timeouts
- * and need to be checked periodically for completion.
+ * Use with the n8n Executions API for native polling without custom webhooks.
  *
  * @example
  * ```typescript
  * const polling: PollingOptions = {
- *   enabled: true,
  *   interval: 2000,
  *   timeout: 60000,
  *   exponentialBackoff: true,
@@ -82,27 +80,16 @@ export interface N8nProviderConfig {
  * ```
  */
 export interface PollingOptions {
-  /** Whether polling is enabled */
-  enabled?: boolean;
-  /** Polling interval in milliseconds */
+  /** Polling interval in milliseconds (default: 1000) */
   interval?: number;
-  /** Maximum time to poll before timing out (milliseconds) */
+  /** Maximum time to poll before timing out in milliseconds (default: 300000) */
   timeout?: number;
   /** Maximum number of polling attempts */
   maxAttempts?: number;
-  /** Callback invoked with progress updates (0-1) */
-  onProgress?: (progress: number) => void;
-  /** Custom endpoint for checking workflow status */
-  statusEndpoint?: string;
   /** Whether to use exponential backoff for polling intervals */
   exponentialBackoff?: boolean;
   /** Maximum polling interval when using exponential backoff (milliseconds) */
   maxInterval?: number;
-  /**
-   * Callback invoked when polling starts.
-   * Use this to persist the execution ID for resuming after page reload.
-   */
-  onPollingStart?: (executionId: string, statusEndpoint: string) => void;
 }
 
 /**

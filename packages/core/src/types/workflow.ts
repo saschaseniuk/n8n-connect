@@ -180,18 +180,3 @@ export interface BinaryResponse {
   filename?: string;
 }
 
-/**
- * Response from a polling status endpoint.
- *
- * Used to check the status of long-running workflows.
- */
-export interface PollingStatusResponse {
-  /** Current status of the workflow */
-  status: 'running' | 'complete' | 'error';
-  /** Progress value (0-1), if available */
-  progress?: number;
-  /** Workflow result data, if complete */
-  result?: unknown;
-  /** Error message, if status is 'error' */
-  error?: string;
-}

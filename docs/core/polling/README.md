@@ -1,163 +1,148 @@
-# Polling Module
+# Polling with the Executions API
 
-Handle long-running n8n workflows that exceed standard HTTP timeouts.
+Handle long-running n8n workflows using the native n8n Executions API.
 
 ## Overview
 
-Some workflows (AI image generation, batch processing, complex integrations) may take longer than typical HTTP timeouts allow. The polling module provides a seamless solution:
+Some workflows (AI image generation, batch processing, complex integrations) may take longer than typical HTTP timeouts allow. The SDK provides native polling via the n8n REST API:
 
-1. The initial request returns immediately with an `executionId`
-2. The client polls a status endpoint at configured intervals
-3. When complete, the final result is returned
+1. The webhook returns immediately with an `executionId`
+2. The SDK polls `/api/v1/executions/{id}` for status
+3. When complete, the final result is extracted and returned
 
 ```
 ┌─────────┐                    ┌─────────┐
-│  Client │─── Start ─────────▶│  n8n    │
+│  Client │─── Webhook ────────▶│  n8n    │
 │         │◀── executionId ────│         │
 │         │                    │         │
-│         │─── Poll status ───▶│         │
+│         │─── GET execution ─▶│  API    │
 │         │◀── "running" ──────│         │
 │         │                    │         │
-│         │─── Poll status ───▶│         │
-│         │◀── "running" ──────│         │
-│         │                    │         │
-│         │─── Poll status ───▶│         │
-│         │◀── "complete" + ───│         │
-│         │    result          │         │
+│         │─── GET execution ─▶│         │
+│         │◀── "success" + ────│         │
+│         │    result data     │         │
 └─────────┘                    └─────────┘
 ```
 
-## Configuration
+## Requirements
 
-### [Polling Options](./polling-options.md)
+- **API Token**: Required for accessing the Executions API
+- **Webhook Configuration**: Must respond immediately with `executionId`
 
-Configure polling behavior for your workflows.
+No custom status webhooks needed!
 
-```typescript
-const { execute } = useWorkflow('heavy-workflow', {
-  polling: {
-    enabled: true,
-    interval: 2000,    // Poll every 2 seconds
-    timeout: 60000,    // Give up after 60 seconds
-  },
-});
-```
-
-## n8n Workflow Setup
-
-For polling to work, your n8n workflow must be structured correctly:
-
-### 1. Return executionId Immediately
-
-The webhook should respond quickly with an execution identifier:
-
-```json
-{
-  "executionId": "{{ $execution.id }}",
-  "status": "running"
-}
-```
-
-### 2. Create a Status Endpoint
-
-A separate webhook to check execution status:
-
-```
-GET /webhook/my-workflow-status?executionId=xxx
-```
-
-### 3. Return Final Result
-
-When complete, the status endpoint returns:
-
-```json
-{
-  "status": "complete",
-  "result": { /* your data */ }
-}
-```
-
-## React Integration
-
-The `useWorkflow` hook handles polling automatically:
-
-```tsx
-function AIImageGenerator() {
-  const { execute, status, data, progress } = useWorkflow('generate-image', {
-    polling: {
-      enabled: true,
-      interval: 2000,
-      timeout: 120000,
-    },
-  });
-
-  return (
-    <div>
-      <button onClick={() => execute({ data: { prompt: 'A sunset' } })}>
-        Generate
-      </button>
-
-      {status === 'running' && (
-        <p>Generating... {progress && `${progress}%`}</p>
-      )}
-
-      {data && <img src={data.imageUrl} alt="Generated" />}
-    </div>
-  );
-}
-```
-
-## Core Package Usage
+## Quick Start
 
 ```typescript
-import { createN8nClient, executeWithPolling } from '@n8n-connect/core';
+import { createN8nClient, ExecutionsClient, executeAndPoll } from '@n8n-connect/core';
 
 const client = createN8nClient({
   baseUrl: 'https://n8n.example.com',
 });
 
-// With polling options
-const result = await executeWithPolling(client, 'heavy-workflow', {
-  data: { /* input */ },
+const execClient = new ExecutionsClient(
+  'https://n8n.example.com',
+  'your-api-key'
+);
+
+const result = await executeAndPoll(client, execClient, '/webhook/process', {
+  data: { task: 'heavy-processing' },
   polling: {
-    enabled: true,
     interval: 2000,
-    timeout: 60000,
-    onProgress: (progress) => console.log(`Progress: ${Math.round(progress * 100)}%`),
+    timeout: 300000,
+    onProgress: (exec) => console.log(`Status: ${exec.status}`),
   },
 });
+
+console.log(result.data);
 ```
 
-### Cancellation
+## n8n Webhook Setup
 
-```typescript
-import { createN8nClient, executeWithPolling, createPollingController } from '@n8n-connect/core';
+Configure your webhook to respond immediately:
 
-const client = createN8nClient({ baseUrl: 'https://n8n.example.com' });
-const controller = createPollingController();
-
-// Start polling
-const promise = executeWithPolling(client, 'long-task', {
-  polling: { enabled: true },
-  signal: controller.signal,
-});
-
-// Cancel if needed
-controller.cancel();
 ```
+Webhook Node Settings:
+- Respond: Immediately
+- Response Code: 202
+- Response Data:
+  {
+    "executionId": "{{ $execution.id }}",
+    "message": "Processing started"
+  }
+```
+
+The workflow then continues processing in the background.
+
+## API Reference
+
+### [ExecutionsClient](./executions-client.md)
+
+Client for the n8n Executions REST API.
+
+### [executeAndPoll](./execute-and-poll.md)
+
+High-level function combining webhook execution with polling.
+
+### [ExecutionPollingOptions](./polling-options.md)
+
+Configure polling behavior.
 
 ## Status Values
 
-| Status | Description |
-|--------|-------------|
-| `idle` | No execution in progress |
-| `running` | Workflow is executing (polling active) |
-| `complete` | Workflow finished successfully |
+| n8n Status | Description |
+|------------|-------------|
+| `new` | Execution created but not started |
+| `running` | Workflow is executing |
+| `success` | Workflow completed successfully |
 | `error` | Workflow failed |
-| `timeout` | Polling timeout exceeded |
+| `canceled` | Workflow was canceled |
+| `waiting` | Workflow is waiting (e.g., for external trigger) |
+
+## Cancellation
+
+```typescript
+const controller = new AbortController();
+
+const promise = executeAndPoll(client, execClient, '/webhook/process', {
+  data: { task: 'heavy-processing' },
+  polling: {
+    signal: controller.signal,
+  },
+});
+
+// Cancel if needed
+controller.abort();
+```
+
+## Error Handling
+
+```typescript
+import { N8nError } from '@n8n-connect/core';
+
+try {
+  const result = await executeAndPoll(client, execClient, '/webhook/process', {
+    polling: { timeout: 60000 },
+  });
+} catch (error) {
+  if (error instanceof N8nError) {
+    switch (error.code) {
+      case 'POLLING_ERROR':
+        console.log('Polling timeout or cancelled');
+        break;
+      case 'WORKFLOW_ERROR':
+        console.log('Workflow execution failed');
+        break;
+      case 'AUTH_ERROR':
+        console.log('Invalid API token');
+        break;
+    }
+  }
+}
+```
 
 ## Related
 
-- [Polling Options](./polling-options.md) - Detailed configuration
-- [useWorkflow Hook](../../react/hooks/use-workflow.md) - React integration
-- [Persistence Guide](../../guides/persistence.md) - Resume polling after page reload
+- [ExecutionsClient](./executions-client.md) - Direct API access
+- [executeAndPoll](./execute-and-poll.md) - Combined execute + poll
+- [Polling Options](./polling-options.md) - Configuration options

@@ -22,7 +22,12 @@ export type {
   UseWorkflowReturn,
   WorkflowResult,
   BinaryResponse,
-  PollingStatusResponse,
+  // Executions API types
+  N8nExecutionStatus,
+  N8nExecution,
+  ExecutionResult,
+  ExecutionPollingOptions,
+  ExecuteAndPollOptions,
   // Error types
   N8nErrorCode,
   N8nErrorDetails,
@@ -56,6 +61,5 @@ export {
   getFileExtension,
 } from './binary';
 
-// Export polling utilities
-export { executeWithPolling, createPollingController, resumePolling } from './polling';
-export type { PollingContext, PollResult } from './polling';
+// Export executions API (for long-running workflows)
+export { ExecutionsClient, executeAndPoll } from './executions';
